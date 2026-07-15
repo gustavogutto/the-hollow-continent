@@ -1,0 +1,129 @@
+# Expansion state (phases 15-19) — post walk-anim delivery
+
+## User constraints
+- DO all of: attack/death anims, new abilities, status visuals, intent preview, loot variety, second zone, side quests, secrets, weather particles, touch controls.
+- DO NOT: sound/music, screen shake, publishing. NEVER publish.
+
+## Checkpoints
+- c4487f37 player walk anims; 05002cc8 mob/boss walk anims (delivered).
+
+## Key files
+- /home/ubuntu/todo.md — expansion todo (phases 15-19)
+- Project: /home/ubuntu/echoes-old-continent ; dev URL https://3000-itr6y5209vnm0lj5igiom-4a555133.us2.manus.computer
+- Processing script pattern: /home/ubuntu/process_mob_walk_sheets.py (bg removal: green chroma via alpha; flood-fill for grey-bg sheets; per-frame normalize; 6-frame 256px cells horizontal)
+- Game code: client/src/game/{types.ts, Game.ts, data/{mobs,spells,items,world}.ts, engine/{assets,renderer,iso}.ts, modes/combat.ts, core/{events,save}.ts}
+- assets.ts: URLS map; getWalkFrame(dir,frame) player; getMobWalkFrame(key,dir,frame) mobs; WalkKey = kardorim|warden|skel_melee|skel_archer|beast|hover; WALK_FRAMES=6
+- Existing mob walk sheet storage paths in assets.ts (already wired).
+
+## Existing static sprites (URLS in assets.ts)
+player_knight_8fa1a349, bonfire_84d4dfd1, npc_elara_07427896, npc_gromm_9157361e, boss_kardorim_bd0e4e8a, grave_warden_2eb1d99f, skeleton_warrior_0f6f5381, mobs_kit_beasts_db0b938c (3x3), mobs_kit_skeletons_1ae2112e (3x3), props_kit_92dc77ab, ui_icons_kit_27c090a5 (4x4), tile_ash_3ebb06e2, tile_crypt_0b9bfe64, menu_bg_895b9de3, boss_arena_bg_a21cff9a
+
+## Art style clause (for all generation)
+"2D isometric dark fantasy tactical RPG, Dark Souls 3 / Elden Ring inspired, painterly gothic realism, NOT cartoonish, muted ash-grey palette with ember-orange accents, dramatic rim lighting, solid green (#00FF00-style) background for cutout"
+Knight ref: /home/ubuntu/webdev-static-assets/player_knight.png (dark armored knight, red plume/cape)
+
+## RESERVED expansion asset URLs (generating in background, use as-is)
+- knight_attack_se: /manus-storage/knight_attack_se_8b00b5ec.png (local /home/ubuntu/webdev-static-assets/knight_attack_se.png)
+- knight_attack_sw: /manus-storage/knight_attack_sw_2f30b5b4.png
+- skel_attack_se: /manus-storage/skel_attack_se_b1381073.png
+- beast_attack_se: /manus-storage/beast_attack_se_16257224.png
+- tile_sunken: /manus-storage/tile_sunken_8dc2f657.png
+- mobs_kit_sunken (3x3): /manus-storage/mobs_kit_sunken_dd93a91b.png
+- drowned_sentinel (secret miniboss/zone2): /manus-storage/drowned_sentinel_e423c91e.png
+- sunken_bg (zone2 title bg): /manus-storage/sunken_bg_ed142dd0.png
+NOTE: attack strips (knight/skel/beast) need local processing (slice/normalize like walk sheets) then re-upload — the reserved raw URLs are UNPROCESSED strips. Wait for local files in /home/ubuntu/webdev-static-assets/, adapt process_mob_walk_sheets.py (new SHEETS list: knight_attack_se, knight_attack_sw, skel_attack_se, beast_attack_se), upload processed, wire those processed URLs into assets.ts. Tile/kit/sentinel/bg used raw as-is.
+Zone2 mobs kit cells (3x3, index 0-8): 0 drowned hollow soldier, 1 brine wraith(hover), 2 coral golem, 3 corpse-fish, 4 sunken archer skeleton, 5 deep-sea crab, 6 tide-priest(caster), 7 eel serpent(hover), 8 drowned ogre.
+
+## FINAL UPLOADED expansion asset URLs (use these, processed & ready)
+- knight_attack_se_sheet: /manus-storage/knight_attack_se_sheet_606bfd99.png (6x256 frames, bottom-anchored)
+- knight_attack_sw_sheet: /manus-storage/knight_attack_sw_sheet_6bb0b4b9.png
+- skel_attack_se_sheet: /manus-storage/skel_attack_se_sheet_bfd9c069.png
+- beast_attack_se_sheet: /manus-storage/beast_attack_se_sheet_460e9ff1.png
+- tile_sunken: /manus-storage/tile_sunken_1fe36d22.png
+- mobs_kit_sunken (3x3): /manus-storage/mobs_kit_sunken_ed33299a.png
+- drowned_sentinel: /manus-storage/drowned_sentinel_0fea6e36.png
+- sunken_bg: /manus-storage/sunken_bg_9793fea5.png
+
+## Generation plan for phase 15 (batch, in generate mode)
+1. knight_attack_se/sw — 6-frame horizontal strip sword swing
+2. skel_attack_se/sw — skeleton melee lunge strike 6-frame
+3. beast_attack_se — quadruped pounce 6-frame (sw optional/mirror not avail; reuse for sw ok visually? generate both if budget)
+4. tile_sunken — second zone tileset (drowned/flooded ruins theme "The Sunken Reach")
+5. sunken_boss / secret miniboss art — e.g. "Drowned Sentinel" miniboss single sprite
+6. mobs_kit_sunken — 3x3 kit sheet lvl 20+ mobs (drowned hollows, brine wraiths, coral golems...)
+
+After generation: adapt process script (6-frame strips → process like walk sheets; single sprites & kits used raw), upload via manus-upload-file --webdev, wire into assets.ts.
+
+## CODE STRUCTURE FACTS (verified by reading)
+### combat.ts
+- CombatCallbacks: onDamage,onShake,onUnitMoved,onLog,onStateChange,onCombatEnd,isBlockedByProp,animateMove,animateAttack. Add new cb methods here + in Game.startCombat wiring.
+- killUnit(u,killer) at ~line305: place to emit death-anim event (add cb.onUnitDied?.(u)).
+- dealDamage handles backstab/execute/resists/push. spells: SpellDef fields incl selfMove,buffAp,aoe,push.
+- endTurn: poison tick (end of turn); startTurn: fire tile dmg, webbed MP reduction.
+- AI: runAI specials buff_allies/invisible/pull/push_charge/aoe_mage; aiApproach uses reachable(u.pos,u.mp,GRID,this.blocked) + bfsPath; aiAttack builds ad-hoc SpellDef.
+- moveCells() only for player; spellRangeCells(idx). For intent preview: compute per-enemy reachable + attack range union (new method intentCells(uid)).
+- makeUnit(defId,pos,isPlayer) — player defId 'frail_hollow'. Combat ctor starts turn immediately.
+- Player spells: PLAYER_SPELLS 6 slots: slash(3AP 1r),heavy(5AP push),soulbolt(3AP 2-6r),emberburst(4AP aoe1),warcry(2AP +2AP once),dash(2AP 1-3 selfMove). To add unlockable spells: extend PLAYER_SPELLS + gate by save.unlockedSpells (new field) in Hud + castSpell check.
+### Game.ts
+- MoveAnim{unit,path,seg,t,done}, AttackAnim{unit,target,t,done}. loop(): unitOverride Map<uid,screenpos>; attack anim = sine lunge 0.35 toward target, t+=dt*3.2.
+- playerWalk + unitWalk maps passed to r.drawEntities. WALK_FRAMES from assets.
+- render(): drawHighlights({moveCells,rangeCells,aoeCells,telegraphs,fireTiles,hoverCell,time}); drawEntities({units,props,bonfire,npcs,doors,soulDrop,unitScreenOverride,activeUid,playerWalk,unitWalk,time}); drawFx(1/60). explore mobs drawn as lead mob w/ labels.
+- SaveData fields (types.ts) incl openedChests, clearedGroups, bossDefeated, wardenDefeated, droppedSouls, hasAshenCrown. NEW fields needed: unlockedSpells:string[], quests:{grommOre:number; elaraMemories:number; grommDone:boolean; elaraDone:boolean}, secretsFound:string[], sentinelDefeated:boolean — must update defaultSave() in core/save.ts with migration (spread defaults over loaded).
+- loadPage filters cleared groups; special-cases d5 boss + p4_0 warden. Zone2: add pages to PAGES + neighborPage handles transitions (check world.ts impl for grid naming p{x}_{y}; zone2 could use s{x}_{y} with own neighbor logic).
+- onCombatEnd: victory drops old_bone/iron_shard 50%. Add drop tables + rare boss drops here (warden: bone_helm exists; add uniques).
+- interact()/updateInteractHint(): bonfire/npc/chest within manhattan<=1. Illusory wall secret: add prop kind or special check in exploreStep when blocked.
+- restAtBonfire clears clearedGroups (respawn). applyStats reads equipment (armor/helmet/ring slots only, one each).
+- exploreStep edge → tryPageTransition → neighborPage(page.id,dir). Dungeons use doors: dungeonEntrance/dungeonNext/exitToOverworld on PageDef.
+- Player spawns 'frail_hollow' makeUnit; player.sprite URLS.player.
+- startCombat wires callbacks incl animateMove/animateAttack; combat.physMult/magMult/weaponFlat set from stats.
+### types.ts
+- PageDef.tileset: "ash"|"crypt" — need to add "sunken". PropKind list fixed — add "illusory" & "memory" maybe. Unit has poisoned/webbed/invisible/staggered fields.
+- HudState.canInteract = hint string. GameMode = menu|explore|combat|dead|victory.
+
+## Game.ts verified facts (for NEXT-B implementation)
+- imports PLAYER_SPELLS from data/spells — replace usages in render() aoePreview lookup with this.activeSpells (new getter: base + unlocked from save.unlockedSpells)
+- startCombat wires callbacks; add onUnitDied: (u)=>this.onUnitDeath(u); set combat.playerSpells = this.activeSpells
+- selectSpell/onKey handle 1-6; extend to 1-9 for unlocked spells
+- onCombatEnd victory: add drop table incl ember_ore (10%) + boss uniques (warden: grave_scythe first kill? use wardenDefeated flag; kardorim: king_plate)
+- exploreStep blocked → check illusory prop at np: reveal (remove prop, secretsFound push, toast, enterPage(ILLUSORY_SECRETS[key]))
+- tryPageTransition: p2_0 north edge → zone2 gate (ZONE2_ENTRY, requires bossDefeated)
+- render(): drawEntities gets playerWalk/unitWalk; attack anims filter sets unitOverride lunge — add unitAttack Map for frame playback (dir from target delta), pass to drawEntities; add weather param to drawFx per page tileset (ash→ash flakes, crypt→fog, sunken→fog)
+- respawn uses PAGES[save.lastBonfire]
+- pushHud: HudState has selectedSpell etc; add spells list (ids) for Hud bar? Hud currently imports PLAYER_SPELLS directly — pass unlocked list via HudState.spells (check Hud.tsx)
+- renderer API used: addDamage, addShake, addDust, screenOf, drawGround(page,time), drawHighlights, drawEntities, drawFx(dt), beginFrame/endFrame, gridAtScreen
+- renderer.drawEntities opts (per MEMORY): units,props,bonfire,npcs,doors,soulDrop,unitScreenOverride,activeUid,playerWalk,unitWalk,time — renderer already has unitAttack/dying/weather support added in phase-15 renderer edits (VERIFY exact param names by grepping renderer.ts drawEntities/drawFx signatures)
+
+## PROGRESS (phase 16 — Game.ts wiring DONE, tsc clean)
+- [x] Game.ts: activeSpells getter + learnSpell(); combat.playerSpells set; keys 1-9; illusory walls (tryIllusoryWall on blocked step); zone2 gate p2_0 N edge ↔ s1_2 S edge (needs bossDefeated); onUnitDied→dying[] + spawnDeathBits + shake; drop table (10% ember_ore, 45% bone/shard); warden drops grave_scythe, sentinel→tide_ring + sentinelDefeated, kardorim adds king_plate; boss intro for drowned_sentinel; unitAttack playback in loop (dir toward target) passed to drawEntities; dying advanced+passed; intent preview (hover enemy → intentUid → intentCells → drawHighlights intentMove/Threat); weather by tileset (ash/crypt fog/sunken fog, menu ash); HudState.spellIds pushed
+- [x] Hud.tsx spellIds bar (ALL_PLAYER_SPELLS lookup); Dialogue.tsx Elara spell shop (learnSpell) + ElaraQuest (3 memory_fragment → 2000 souls + keepers_locket) + GrommQuest (2 ember_ore → ember_greatsword); Game.completeElaraQuest/completeGrommQuest; items added: ember_greatsword, tide_ring, keepers_locket. tsc clean.
+- REMAINING:
+  1. Touch controls: virtual joystick in Hud (pointer events → game.setTouchDir(dir|null) mapping to heldDirs), show only on touch devices (useMobile hook exists)
+  2. Verify: demo screenshots (attack frames, death anim, intent hover, zone2 pages, secret rooms), logs, checkpoint
+- Dialogue.tsx path: client/src/components/overlays/Dialogue.tsx; Hud: client/src/components/hud/Hud.tsx; game accessible via ?? (check how overlays call game methods — likely bus events or window.game)
+
+## PROGRESS (phase 15)
+- [x] Attack strips processed + uploaded + wired into assets.ts (AttackKey knight|skel|beast, getAttackFrame(key,dir,frame), WALK_FRAMES=6 shared)
+- [x] Zone2 assets uploaded + URLS entries: tileSunken, sunkenMobs (3x3), drownedSentinel, sunkenBg
+- [x] types.ts: sunken tileset+zone field, illusory PropKind, attackKey on MobDef/Unit, SaveData {unlockedSpells, quests{grommOre,grommDone,elaraMemories,elaraDone}, secretsFound, sentinelDefeated} + save.ts defaults/migration DONE
+- [x] renderer.ts: attack frame playback (unitAttack Map<uid,{dir,t}>, atkKey knight for player / u.attackKey mobs), DyingUnit interface + dying[] corpse fade, spawnDeathBits(g,bones,big), poison drips, web strands, drawFx(dt,weather{ash,fog}) ash flakes + crypt fog, tileCanvas supports sunken DONE
+- [x] spells.ts: UNLOCKABLE_SPELLS (pyre lvl6/900, gravequake lvl10/2200, soulrend lvl14/4500) + SPELL_UNLOCKS + ALL_PLAYER_SPELLS DONE
+- [x] items.ts: grave_scythe(+6-10,-1MP), soul_saber(+3-5,+1AP), king_plate(+50HP,-1MP), wraith_shroud(+10HP,+1MP), sentinel_helm(+30HP,-1AP), scholar_ring(+1AP,+1MP,-10HP), ember_ore, memory_fragment, forge_hammer(+1AP ring), keepers_blessing(+30HP ring) DONE. NOTE: applyStats in Game.ts must honor negative ap/mp bonuses & weapon apBonus/mpBonus (check ItemDef usage)
+- [ ] NEXT-A combat.ts: (1) makeUnit copy attackKey; (2) onUnitDied cb in killUnit; (3) intentCells(uid) method (BFS reachable via this.blocked + range union) for hover preview; (4) castSpell support pyre (fire tiles), gravequake (aoe self), soulrend; spell bar uses ALL_PLAYER_SPELLS filtered by save.unlockedSpells (Game passes list)
+- [ ] NEXT-B Game.ts: wire onUnitDied→dying[]+spawnDeathBits(bones = defId startsWith skel/ boneheavy list), unitAttack map from AttackAnims (dir from target delta), pass dying+unitAttack+weather to render (ash for overworld zone1, fog for crypt, none sunken?), mob drops table on victory, quest items in chests/drops, illusory wall reveal in exploreStep (blocked prop kind illusory → remove + secretsFound + toast), sentinel fight on secret page, zone2 pages in world.ts (s0_0..s2_2 or extend PAGES + unlock gate on bossDefeated via door on p2_0?), touch controls (tap = click already; add virtual joystick overlay in Hud for mobile + bigger buttons)
+- [ ] NEXT-C world.ts: add zone2 "Sunken Reach" pages (tileset sunken, zone2 mobs via URLS.sunkenMobs 3x3 kit: 0 drowned soldier,1 brine wraith hover,2 coral golem,3 corpse-fish,4 sunken archer,5 crab,6 tide-priest caster,7 eel hover,8 drowned ogre), entrance door from a zone1 page gated by bossDefeated; secret page w/ Drowned Sentinel (URLS.drownedSentinel); quest placements: 3 ember_ore chests, 3 memory_fragment locations; illusory props.
+- [ ] NEXT-D mobs.ts: add zone2 mob defs lvl 20-26 + drowned_sentinel boss def (attackKey/walkKey hover or none); add attackKey skel/beast to existing mobs (skel_melee walkers→skel, beasts→beast)
+- [ ] NEXT-E Dialogue.tsx: Elara spell unlock menu + memory quest turn-in; Gromm ore quest turn-in; Hud.tsx: 9-slot bar or paged spells; CharacterMap quest display maybe
+- [ ] THEN: pnpm check, screenshots explore/combat, verify, checkpoint, deliver (NO publish) (walkKey done earlier; add attackKey to MobDef/Unit? simpler: derive from walkKey — skel_melee/skel_archer→skel, beast→beast, player→knight, else lunge-only), renderer attack frame playback during AttackAnim, death anims (onUnitDied cb → dying[] with timer, bone/ash particles), status visuals (poison drips, web strands, fire flicker), intent preview (combat.intentCells(uid) + hover), then progression content.
+
+## Implementation notes
+- Death anims: on unit death in combat.ts emit event; renderer: fade+particles (bone shards for skel_*, ash embers others). Track dying units w/ timer in Game.ts; keep drawing corpse fade ~0.8s.
+- Attack anims: attackAnims already lunge; add sheet-frame playback for player (knight_attack) + skel_melee/beast when attacking; frame = floor(t*6).
+- Intent preview: hoverCell over enemy in combat → compute BFS reachable tiles (mp) + attack range union → renderer.drawDiamond red tint.
+- Status visuals: fireTiles already exist (check renderer); add flicker; poison drip: green particles above poisoned units; webbed: white strand arcs.
+- New spells: spells.ts add ember_bolt (range 3-8, 3AP), ashen_slam (AoE cross, 4AP), shadow_step (dash 4 tiles, 2AP, ignores blocking). Unlock via Elara level-up menu (levels 5/10/15?) — store unlocked in save.
+- Loot: items.ts extend (heavy armor -1MP +HP, quick blade +1AP low dmg, etc.); drop tables per mob tier; Warden/Kardorim rare uniques.
+- Quests: save.quests {gromm_ore: state, elara_memories: count}; quest items in chests/mob drops; dialogue additions in Dialogue.tsx.
+- Secrets: world.ts pages with illusory wall props (walk into → reveal passage), hidden chests, secret miniboss page.
+- Zone 2 "The Sunken Reach": extend world grid pages (e.g. new page set s0_0..s2_2 3x3) accessible via crypt exit after kardorimDefeated flag.
+- Weather: renderer particle layer — ash flakes drifting (overworld ash pages), fog banks (crypt/sunken).
+- Touch: on-screen virtual joystick (pointer events) bottom-left, tap targets enlarged; detect touch via matchMedia(pointer:coarse).
